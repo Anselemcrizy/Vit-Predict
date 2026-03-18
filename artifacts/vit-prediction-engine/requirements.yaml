@@ -1,15 +1,17 @@
 packages:
-  "framer-motion": "For smooth layout animations and entry transitions"
-  "clsx": "Utility for constructing className strings conditionally"
-  "tailwind-merge": "Utility function to efficiently merge Tailwind CSS classes"
-  "lucide-react": "For crisp, beautiful technical icons"
-  "date-fns": "For formatting processing times and timestamps"
+  "framer-motion": "For fluid layout animations and smooth UI transitions in the prediction results"
+  "clsx": "For conditional class name merging"
+  "tailwind-merge": "For merging tailwind classes safely"
+  "date-fns": "For formatting match dates and prediction timestamps"
+  "lucide-react": "For beautiful technical icons"
+  "react-hook-form": "For robust form state management"
+  "@hookform/resolvers": "For Zod schema validation in forms"
 
 images:
   - path: "artifacts/vit-prediction-engine/public/images/tech-bg.png"
-    description: "Abstract dark technical background with subtle glowing cyan and purple grid lines, out of focus, very dark slate background, professional futuristic AI aesthetic"
+    description: "Dark, moody abstract background with subtle glowing geometric grid lines and deep blue/teal atmospheric lighting, suitable for a highly technical sports analytics dashboard."
     aspect_ratio: "16:9"
 
 notes:
-  - "The app runs primarily in dark mode for a technical/professional feel."
-  - "React Query hooks are imported directly from @workspace/api-client-react as specified in the instructions."
+  - "The API is pre-generated in @workspace/api-client-react. We use those hooks directly."
+  - "The app uses a forced dark mode aesthetic with high-contrast data visualization."

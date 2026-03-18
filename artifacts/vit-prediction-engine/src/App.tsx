@@ -5,7 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
 
-// Configure QueryClient with reasonable defaults
+// Configure QueryClient with defaults tailored for this dashboard
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
