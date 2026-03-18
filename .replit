@@ -1,4 +1,4 @@
-modules = ["nodejs-24", "postgresql-16"]
+modules = ["nodejs-24", "postgresql-16", "python-3.11"]
 
 [[artifacts]]
 id = "artifacts/api-server"
@@ -16,6 +16,27 @@ env = { "CI" = "true" }
 
 [workflows]
 runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "python-service: Model Server"
+
+[[workflows.workflow]]
+name = "python-service: Model Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd python-service && python main.py"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 stack = "PNPM_WORKSPACE"
