@@ -1,6 +1,5 @@
 """
 main.py — VIT Prediction Engine (Python FastAPI Service)
-Exposes a /predict endpoint that runs model.py against data.py stats.
 """
 
 import time
@@ -10,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Literal
 
-from data import get_football_matchup, get_basketball_matchup, get_tennis_matchup
+from data import get_data
 from model import predict_football, predict_basketball, predict_tennis
 
 app = FastAPI(title="VIT Model Service", version="1.0.0")
@@ -59,28 +58,29 @@ def predict(req: PredictRequest):
     if not home or not away:
         raise HTTPException(status_code=400, detail="home_team and away_team are required")
 
+    data = get_data()
+    home_xg = data["home_xg"]
+    away_xg = data["away_xg"]
+
     if sport == "football":
-        home_xg, away_xg = get_football_matchup(home, away)
         result = predict_football(home_xg, away_xg)
         meta = {"model": "Poisson Monte Carlo", "home_xg": home_xg, "away_xg": away_xg, "simulations": 50000}
 
     elif sport == "basketball":
-        matchup = get_basketball_matchup(home, away)
         result = predict_basketball(
-            home_ortg=matchup["home_ortg"],
-            away_ortg=matchup["away_ortg"],
-            home_pace=matchup["pace"],
-            away_pace=matchup["pace"],
+            home_ortg=115.0,
+            away_ortg=113.0,
+            home_pace=99.0,
+            away_pace=99.0,
         )
-        meta = {"model": "Pace-Adjusted Normal", **matchup}
+        meta = {"model": "Pace-Adjusted Normal", "note": "stub data"}
 
     elif sport == "tennis":
-        matchup = get_tennis_matchup(home, away)
         result = predict_tennis(
-            home_serve_win=matchup["home_serve_win"],
-            away_serve_win=matchup["away_serve_win"],
+            home_serve_win=0.63,
+            away_serve_win=0.61,
         )
-        meta = {"model": "Set-Win Markov", **matchup}
+        meta = {"model": "Set-Win Markov", "note": "stub data"}
 
     else:
         raise HTTPException(status_code=400, detail=f"Unknown sport: {sport}")
