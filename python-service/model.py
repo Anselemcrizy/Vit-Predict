@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Optional
 
-def predict_football(home_xg: float, away_xg: float, simulations: int = 50000) -> dict:
+def predict(home_xg: float, away_xg: float, simulations: int = 50000) -> dict:
     """
     Poisson-based Monte Carlo simulation for football match outcomes.
     Returns win/draw/loss probabilities and most likely scorelines.
