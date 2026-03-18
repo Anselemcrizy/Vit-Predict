@@ -15,6 +15,10 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
+- **Python model service**: FastAPI + uvicorn on port 5000 (`python-service/`)
+  - `model.py`: Poisson Monte Carlo (football), pace-adjusted normal (basketball), Markov set model (tennis)
+  - `data.py`: xG / efficiency / serve-win stat lookups with deterministic fallback
+  - `main.py`: FastAPI `/predict` endpoint, called by Node.js `vit-engine.ts`
 
 ## Structure
 

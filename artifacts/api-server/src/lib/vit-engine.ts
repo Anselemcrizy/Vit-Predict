@@ -1,7 +1,6 @@
 /**
  * VIT — Value Intelligence Trust Prediction Engine
- * Sports modeling for Football, Basketball, and Tennis.
- * Uses AI-driven simulation with statistical modeling.
+ * Orchestrates the Python model service and builds full betting market analysis.
  */
 
 export type Sport = "football" | "basketball" | "tennis";
@@ -36,240 +35,215 @@ export interface VitResult {
   processingTimeMs: number;
 }
 
-function nameHash(name: string): number {
-  let h = 5381;
-  for (let i = 0; i < name.length; i++) {
-    h = ((h << 5) + h + name.charCodeAt(i)) >>> 0;
+const PYTHON_SERVICE_URL = "http://localhost:5000";
+
+interface PythonPredictResponse {
+  home_win: number;
+  draw: number | null;
+  away_win: number;
+  predicted_home_score: number | null;
+  predicted_away_score: number | null;
+  score_simulations: Array<{ home: number; away: number; probability: number }>;
+  model_meta: Record<string, unknown>;
+  processing_time_ms: number;
+}
+
+async function callPythonModel(sport: Sport, homeTeam: string, awayTeam: string): Promise<PythonPredictResponse> {
+  const res = await fetch(`${PYTHON_SERVICE_URL}/predict`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sport, home_team: homeTeam, away_team: awayTeam }),
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Python model service error ${res.status}: ${text}`);
   }
-  return h;
-}
 
-function seededRandom(seed: number): () => number {
-  let s = seed;
-  return () => {
-    s = ((s * 1664525) + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-}
-
-function clamp(v: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, v));
+  return res.json() as Promise<PythonPredictResponse>;
 }
 
 function round2(v: number) {
   return Math.round(v * 100) / 100;
 }
 
+function round4(v: number) {
+  return Math.round(v * 10000) / 10000;
+}
+
 function getValueRating(ev: number): string {
-  if (ev >= 0.25) return "STRONG VALUE";
-  if (ev >= 0.12) return "GOOD VALUE";
-  if (ev >= 0.04) return "MODERATE";
+  if (ev >= 0.20) return "STRONG VALUE";
+  if (ev >= 0.10) return "GOOD VALUE";
+  if (ev >= 0.03) return "MODERATE";
   if (ev >= -0.05) return "LOW VALUE";
   return "NO VALUE";
 }
 
-function footballScoreSimulations(rand: () => number, homeStrength: number, awayStrength: number): ScoreSimulation[] {
-  const homeLambda = clamp(homeStrength * 1.6 + 0.3, 0.3, 3.5);
-  const awayLambda = clamp(awayStrength * 1.2 + 0.2, 0.2, 2.8);
-
-  function poisson(lambda: number, k: number): number {
-    let result = Math.exp(-lambda);
-    for (let i = 1; i <= k; i++) result *= lambda / i;
-    return result;
-  }
-
-  const sims: ScoreSimulation[] = [];
-  for (let h = 0; h <= 5; h++) {
-    for (let a = 0; a <= 5; a++) {
-      const prob = poisson(homeLambda, h) * poisson(awayLambda, a);
-      if (prob > 0.01) {
-        sims.push({ home: h, away: a, probability: round2(prob) });
-      }
-    }
-  }
-  return sims.sort((a, b) => b.probability - a.probability).slice(0, 8);
+function impliedOdds(prob: number): number {
+  return round2(1 / Math.max(0.01, prob));
 }
 
-function basketballScoreSimulations(rand: () => number, homeStrength: number, awayStrength: number): ScoreSimulation[] {
-  const baseHome = Math.round(100 + homeStrength * 18 - awayStrength * 8);
-  const baseAway = Math.round(100 + awayStrength * 18 - homeStrength * 8);
-
-  const sims: ScoreSimulation[] = [];
-  const spreads = [-12, -8, -5, -3, -1, 1, 3, 5, 8, 12];
-  let remaining = 1.0;
-
-  for (let i = 0; i < spreads.length; i++) {
-    const prob = i < spreads.length - 1
-      ? clamp(0.08 + rand() * 0.06, 0.04, 0.18)
-      : remaining;
-    const h = clamp(baseHome + spreads[i], 70, 145);
-    const a = clamp(baseAway - spreads[i], 70, 145);
-    sims.push({ home: h, away: a, probability: round2(prob) });
-    remaining -= prob;
-  }
-  return sims.sort((a, b) => b.probability - a.probability).slice(0, 6);
+function computeEv(trueProb: number, marketProb: number): number {
+  return round4(trueProb / marketProb - 1);
 }
 
-function tennisScoreSimulations(rand: () => number, homeStrength: number): ScoreSimulation[] {
-  const sets = [3, 2];
-  const sims: ScoreSimulation[] = [];
-  const patterns = [
-    [2, 0], [2, 1], [1, 2], [0, 2],
-  ];
-  const base = homeStrength;
-  const probs = [
-    clamp(base * 0.5 + 0.1, 0.05, 0.45),
-    clamp(base * 0.35 + 0.08, 0.04, 0.35),
-    clamp((1 - base) * 0.35 + 0.08, 0.04, 0.35),
-    clamp((1 - base) * 0.5 + 0.1, 0.05, 0.45),
-  ];
-  const total = probs.reduce((a, b) => a + b, 0);
-  for (let i = 0; i < patterns.length; i++) {
-    sims.push({ home: patterns[i][0], away: patterns[i][1], probability: round2(probs[i] / total) });
-  }
-  return sims.sort((a, b) => b.probability - a.probability);
-}
+function buildFootballMarkets(
+  homeWin: number, draw: number, awayWin: number,
+  homeScore: number, awayScore: number,
+): MarketPrediction[] {
+  const total = homeScore + awayScore;
+  const over25 = total > 2.45 ? Math.min(0.82, 0.48 + (total - 2.45) * 0.18) : Math.max(0.22, 0.48 - (2.45 - total) * 0.18);
+  const btts = Math.min(homeScore, awayScore) > 0.75 ? Math.min(0.78, 0.45 + Math.min(homeScore, awayScore) * 0.2) : Math.max(0.22, 0.42 - (0.75 - Math.min(homeScore, awayScore)) * 0.3);
 
-function buildFootballMarkets(rand: () => number, homeWin: number, draw: number, awayWin: number, homeGoals: number, awayGoals: number): MarketPrediction[] {
-  const totalGoals = homeGoals + awayGoals;
-  const over25 = totalGoals > 2.5 ? 0.55 + rand() * 0.25 : 0.3 + rand() * 0.2;
-  const btts = Math.min(homeGoals, awayGoals) > 0.8 ? 0.55 + rand() * 0.2 : 0.35 + rand() * 0.2;
-  const hh1 = homeWin + draw * 0.45;
+  const marketOddsVigor = 1.06;
+
   const markets: MarketPrediction[] = [
     {
       market: "Match Result",
-      prediction: homeWin > awayWin && homeWin > draw ? "Home Win" : awayWin > draw ? "Away Win" : "Draw",
-      confidence: round2(Math.max(homeWin, awayWin, draw)),
-      ev: round2(0.04 + rand() * 0.35 - 0.05),
-      recommendedOdds: round2(1 / Math.max(homeWin, awayWin, draw) * (1 + rand() * 0.1)),
+      prediction: homeWin >= awayWin && homeWin >= draw ? "Home Win" : awayWin >= draw ? "Away Win" : "Draw",
+      confidence: round4(Math.max(homeWin, awayWin, draw)),
+      ev: computeEv(Math.max(homeWin, awayWin, draw), Math.max(homeWin, awayWin, draw) * marketOddsVigor),
+      recommendedOdds: round2(impliedOdds(Math.max(homeWin, awayWin, draw)) * 0.97),
     },
     {
       market: "Over/Under 2.5",
       prediction: over25 > 0.5 ? "Over 2.5 Goals" : "Under 2.5 Goals",
-      confidence: round2(Math.max(over25, 1 - over25)),
-      ev: round2(0.02 + rand() * 0.28 - 0.04),
-      recommendedOdds: round2(1 / Math.max(over25, 1 - over25) * (1 + rand() * 0.1)),
+      confidence: round4(Math.max(over25, 1 - over25)),
+      ev: computeEv(Math.max(over25, 1 - over25), Math.max(over25, 1 - over25) * marketOddsVigor),
+      recommendedOdds: round2(impliedOdds(Math.max(over25, 1 - over25)) * 0.97),
     },
     {
       market: "BTTS",
       prediction: btts > 0.5 ? "BTTS Yes" : "BTTS No",
-      confidence: round2(Math.max(btts, 1 - btts)),
-      ev: round2(0.01 + rand() * 0.22 - 0.04),
-      recommendedOdds: round2(1 / Math.max(btts, 1 - btts) * (1 + rand() * 0.1)),
+      confidence: round4(Math.max(btts, 1 - btts)),
+      ev: computeEv(Math.max(btts, 1 - btts), Math.max(btts, 1 - btts) * marketOddsVigor),
+      recommendedOdds: round2(impliedOdds(Math.max(btts, 1 - btts)) * 0.97),
     },
     {
       market: "Double Chance",
-      prediction: hh1 > 0.5 ? "Home/Draw" : "Away Win",
-      confidence: round2(Math.max(hh1, 1 - hh1)),
-      ev: round2(0.01 + rand() * 0.12 - 0.03),
-      recommendedOdds: round2(1 / Math.max(hh1, 1 - hh1) * (1 + rand() * 0.05)),
+      prediction: homeWin + draw > 0.5 ? "Home/Draw" : "Away Win",
+      confidence: round4(Math.max(homeWin + draw, awayWin)),
+      ev: computeEv(Math.max(homeWin + draw, awayWin), Math.max(homeWin + draw, awayWin) * marketOddsVigor),
+      recommendedOdds: round2(impliedOdds(Math.max(homeWin + draw, awayWin)) * 0.98),
     },
     {
-      market: "First Half",
+      market: "First Half Result",
       prediction: homeWin > awayWin ? "Home/Draw HT" : "Away Win HT",
-      confidence: round2(0.48 + rand() * 0.3),
-      ev: round2(0.0 + rand() * 0.2 - 0.05),
-      recommendedOdds: round2(1.4 + rand() * 0.8),
+      confidence: round4(homeWin > awayWin ? Math.min(0.72, homeWin + draw * 0.55) : Math.min(0.72, awayWin + draw * 0.45)),
+      ev: computeEv(0.52, 0.52 * marketOddsVigor),
+      recommendedOdds: round2(1.85),
     },
   ];
+
   return markets;
 }
 
-function buildBasketballMarkets(rand: () => number, homeWin: number, awayWin: number, homeScore: number, awayScore: number): MarketPrediction[] {
+function buildBasketballMarkets(
+  homeWin: number, awayWin: number,
+  homeScore: number, awayScore: number,
+): MarketPrediction[] {
   const total = homeScore + awayScore;
   const overUnderLine = Math.round(total / 5) * 5;
-  const spreadFav = homeScore - awayScore;
+  const spread = Math.abs(homeScore - awayScore);
+  const favoredHome = homeScore > awayScore;
+  const marketOddsVigor = 1.05;
 
   return [
     {
       market: "Moneyline",
       prediction: homeWin > 0.5 ? "Home Win" : "Away Win",
-      confidence: round2(Math.max(homeWin, awayWin)),
-      ev: round2(0.05 + rand() * 0.3 - 0.04),
-      recommendedOdds: round2(1 / Math.max(homeWin, awayWin) * (1 + rand() * 0.1)),
+      confidence: round4(Math.max(homeWin, awayWin)),
+      ev: computeEv(Math.max(homeWin, awayWin), Math.max(homeWin, awayWin) * marketOddsVigor),
+      recommendedOdds: round2(impliedOdds(Math.max(homeWin, awayWin)) * 0.97),
     },
     {
       market: `Total Points O/U ${overUnderLine}`,
-      prediction: rand() > 0.5 ? `Over ${overUnderLine}` : `Under ${overUnderLine}`,
-      confidence: round2(0.5 + rand() * 0.25),
-      ev: round2(0.02 + rand() * 0.25 - 0.04),
-      recommendedOdds: round2(1.85 + rand() * 0.2),
+      prediction: total > overUnderLine ? `Over ${overUnderLine}` : `Under ${overUnderLine}`,
+      confidence: round4(0.52),
+      ev: computeEv(0.52, 0.52 * marketOddsVigor),
+      recommendedOdds: round2(1.91),
     },
     {
       market: "Point Spread",
-      prediction: spreadFav > 3 ? `Home -${Math.round(Math.abs(spreadFav) / 2)}` : `Away -${Math.round(Math.abs(spreadFav) / 2)}`,
-      confidence: round2(0.5 + rand() * 0.3),
-      ev: round2(0.02 + rand() * 0.2 - 0.03),
-      recommendedOdds: round2(1.88 + rand() * 0.15),
+      prediction: favoredHome ? `Home -${Math.round(spread / 2)}` : `Away -${Math.round(spread / 2)}`,
+      confidence: round4(Math.max(homeWin, awayWin) * 0.88),
+      ev: computeEv(0.52, 0.52 * marketOddsVigor),
+      recommendedOdds: round2(1.91),
     },
     {
       market: "First Quarter",
       prediction: homeWin > 0.5 ? "Home Q1" : "Away Q1",
-      confidence: round2(0.45 + rand() * 0.3),
-      ev: round2(0.0 + rand() * 0.22 - 0.05),
-      recommendedOdds: round2(1.6 + rand() * 0.8),
+      confidence: round4(0.50 + Math.abs(homeWin - 0.5) * 0.5),
+      ev: computeEv(0.51, 0.51 * marketOddsVigor),
+      recommendedOdds: round2(1.85),
     },
   ];
 }
 
-function buildTennisMarkets(rand: () => number, homeWin: number, awayWin: number): MarketPrediction[] {
+function buildTennisMarkets(
+  homeWin: number, awayWin: number,
+): MarketPrediction[] {
+  const marketOddsVigor = 1.05;
+  const topSets = homeWin > 0.55 ? "2-0" : homeWin > 0.45 ? "2-1" : awayWin > 0.55 ? "0-2" : "1-2";
+
   return [
     {
       market: "Match Winner",
       prediction: homeWin > 0.5 ? "Player 1 Win" : "Player 2 Win",
-      confidence: round2(Math.max(homeWin, awayWin)),
-      ev: round2(0.05 + rand() * 0.35 - 0.04),
-      recommendedOdds: round2(1 / Math.max(homeWin, awayWin) * (1 + rand() * 0.1)),
+      confidence: round4(Math.max(homeWin, awayWin)),
+      ev: computeEv(Math.max(homeWin, awayWin), Math.max(homeWin, awayWin) * marketOddsVigor),
+      recommendedOdds: round2(impliedOdds(Math.max(homeWin, awayWin)) * 0.97),
     },
     {
       market: "Total Sets",
-      prediction: rand() > 0.55 ? "Over 2.5 Sets" : "Under 2.5 Sets",
-      confidence: round2(0.5 + rand() * 0.28),
-      ev: round2(0.02 + rand() * 0.25 - 0.04),
-      recommendedOdds: round2(1.8 + rand() * 0.25),
+      prediction: Math.max(homeWin, awayWin) > 0.68 ? "Under 2.5 Sets" : "Over 2.5 Sets",
+      confidence: round4(Math.max(homeWin, awayWin) > 0.68 ? 0.62 : 0.54),
+      ev: computeEv(0.54, 0.54 * marketOddsVigor),
+      recommendedOdds: round2(1.85),
     },
     {
       market: "Set 1 Winner",
       prediction: homeWin > 0.5 ? "Player 1" : "Player 2",
-      confidence: round2(0.5 + rand() * 0.3),
-      ev: round2(0.01 + rand() * 0.2 - 0.03),
-      recommendedOdds: round2(1 / (0.5 + rand() * 0.3) * (1 + rand() * 0.08)),
+      confidence: round4(0.50 + Math.abs(homeWin - 0.5) * 0.7),
+      ev: computeEv(0.50 + Math.abs(homeWin - 0.5) * 0.7, (0.50 + Math.abs(homeWin - 0.5) * 0.7) * marketOddsVigor),
+      recommendedOdds: round2(impliedOdds(0.50 + Math.abs(homeWin - 0.5) * 0.7) * 0.97),
     },
     {
-      market: "Correct Score",
-      prediction: homeWin > 0.55 ? "2-0" : homeWin > 0.45 ? "2-1" : awayWin > 0.55 ? "0-2" : "1-2",
-      confidence: round2(0.3 + rand() * 0.25),
-      ev: round2(0.08 + rand() * 0.4 - 0.05),
-      recommendedOdds: round2(2.5 + rand() * 2.5),
+      market: "Correct Score (Sets)",
+      prediction: topSets,
+      confidence: round4(Math.max(homeWin, awayWin) * 0.55),
+      ev: computeEv(Math.max(homeWin, awayWin) * 0.55, Math.max(homeWin, awayWin) * 0.55 * marketOddsVigor),
+      recommendedOdds: round2(impliedOdds(Math.max(homeWin, awayWin) * 0.55) * 0.97),
     },
   ];
 }
 
 function generateConsensus(
-  sport: Sport,
-  homeTeam: string,
-  awayTeam: string,
-  homeWin: number,
-  awayWin: number,
-  bestBet: string,
-  ev: number,
-  valueRating: string,
+  sport: Sport, homeTeam: string, awayTeam: string,
+  homeWin: number, awayWin: number, draw: number | null,
+  bestBet: string, ev: number, valueRating: string,
+  meta: Record<string, unknown>,
 ): string {
   const homeP = Math.round(homeWin * 100);
   const awayP = Math.round(awayWin * 100);
   const evStr = ev >= 0 ? `+${(ev * 100).toFixed(1)}%` : `${(ev * 100).toFixed(1)}%`;
 
-  const sportPhrases: Record<Sport, string> = {
-    football: "possession metrics, xG models, and recent form data",
-    basketball: "pace-adjusted efficiency ratings, lineup data, and rest advantage",
-    tennis: "surface-specific win rates, recent H2H records, and serve statistics",
+  const modelName = (meta.model as string) ?? "statistical model";
+  const xgHint = sport === "football" && meta.home_xg != null
+    ? ` (xG: ${meta.home_xg} vs ${meta.away_xg})`
+    : "";
+
+  const sportContext: Record<Sport, string> = {
+    football: `xG-based Poisson simulation${xgHint}`,
+    basketball: `pace-adjusted offensive/defensive efficiency ratings`,
+    tennis: `serve & return win probability modeling`,
   };
 
-  const template = valueRating === "STRONG VALUE" || valueRating === "GOOD VALUE"
-    ? `VIT models show ${homeTeam} at ${homeP}% win probability versus ${awayTeam} at ${awayP}%, based on ${sportPhrases[sport]}. The ${bestBet} stands out as a ${valueRating.toLowerCase()} opportunity with an expected value of ${evStr} — meaning the market price underestimates the true probability. AI consensus is aligned: back this bet with confidence.`
-    : `Our ${sport} models assign ${homeTeam} a ${homeP}% win probability against ${awayTeam} at ${awayP}%, drawing from ${sportPhrases[sport]}. The best available edge is the ${bestBet} at an expected value of ${evStr}. Market is reasonably efficient here — proceed with standard unit sizing and manage exposure accordingly.`;
-
-  return template;
+  if (valueRating === "STRONG VALUE" || valueRating === "GOOD VALUE") {
+    return `Our ${modelName} assigns ${homeTeam} a ${homeP}% win probability against ${awayTeam} at ${awayP}%, derived from ${sportContext[sport]}. The ${bestBet} market shows a clear mispricing with an EV of ${evStr} — the model estimates this outcome is being undervalued by bookmakers. AI consensus: strong alignment across simulations, this is a confident edge.`;
+  }
+  return `${modelName} simulations give ${homeTeam} ${homeP}% vs ${awayTeam} ${awayP}% using ${sportContext[sport]}. The best available line is ${bestBet} with an EV of ${evStr}. The market is fairly priced here — size this bet cautiously and consider line shopping before committing.`;
 }
 
 export async function runVitAnalysis(
@@ -279,72 +253,46 @@ export async function runVitAnalysis(
 ): Promise<VitResult> {
   const startTime = Date.now();
 
-  await new Promise((r) => setTimeout(r, 900 + Math.random() * 600));
+  const python = await callPythonModel(sport, homeTeam, awayTeam);
 
-  const seed = nameHash(`${sport}:${homeTeam.toLowerCase()}:${awayTeam.toLowerCase()}`);
-  const rand = seededRandom(seed);
+  const homeWinProb = round4(python.home_win);
+  const awayWinProb = round4(python.away_win);
+  const drawProb = python.draw != null ? round4(python.draw) : null;
+  const predictedHomeScore = python.predicted_home_score;
+  const predictedAwayScore = python.predicted_away_score;
+  const scoreSimulations = python.score_simulations.map((s) => ({
+    home: s.home,
+    away: s.away,
+    probability: round4(s.probability),
+  }));
 
-  const homeStrength = clamp(0.3 + rand() * 0.7, 0.15, 0.92);
-  const awayStrength = clamp(0.3 + rand() * 0.7, 0.15, 0.92);
-  const totalStrength = homeStrength + awayStrength;
-  const homeAdv = sport === "football" ? 0.06 : sport === "basketball" ? 0.04 : 0;
-
-  let homeWinProb: number;
-  let drawProb: number | null = null;
-  let awayWinProb: number;
-
+  let marketPredictions: MarketPrediction[];
   if (sport === "football") {
-    const rawHome = (homeStrength / totalStrength) + homeAdv;
-    const rawAway = (awayStrength / totalStrength) - homeAdv;
-    const drawBase = clamp(0.18 + rand() * 0.12, 0.1, 0.32);
-    homeWinProb = round2(clamp(rawHome * (1 - drawBase), 0.1, 0.8));
-    awayWinProb = round2(clamp(rawAway * (1 - drawBase), 0.05, 0.7));
-    drawProb = round2(clamp(1 - homeWinProb - awayWinProb, 0.08, 0.38));
-    const total = homeWinProb + (drawProb ?? 0) + awayWinProb;
-    homeWinProb = round2(homeWinProb / total);
-    awayWinProb = round2(awayWinProb / total);
-    drawProb = round2(1 - homeWinProb - awayWinProb);
+    marketPredictions = buildFootballMarkets(
+      homeWinProb, drawProb ?? 0, awayWinProb,
+      predictedHomeScore ?? 1.2, predictedAwayScore ?? 1.0,
+    );
   } else if (sport === "basketball") {
-    const rawHome = clamp((homeStrength / totalStrength) + homeAdv, 0.2, 0.85);
-    homeWinProb = round2(rawHome);
-    awayWinProb = round2(1 - rawHome);
+    marketPredictions = buildBasketballMarkets(
+      homeWinProb, awayWinProb,
+      predictedHomeScore ?? 110, predictedAwayScore ?? 107,
+    );
   } else {
-    const rawHome = clamp(homeStrength / totalStrength, 0.2, 0.85);
-    homeWinProb = round2(rawHome);
-    awayWinProb = round2(1 - rawHome);
-  }
-
-  let predictedHomeScore: number | null = null;
-  let predictedAwayScore: number | null = null;
-  let scoreSimulations: ScoreSimulation[] = [];
-  let marketPredictions: MarketPrediction[] = [];
-
-  if (sport === "football") {
-    const homeGoals = clamp(homeStrength * 1.8 + 0.2, 0.3, 3.5);
-    const awayGoals = clamp(awayStrength * 1.3 + 0.1, 0.1, 2.8);
-    predictedHomeScore = round2(homeGoals);
-    predictedAwayScore = round2(awayGoals);
-    scoreSimulations = footballScoreSimulations(rand, homeStrength, awayStrength);
-    marketPredictions = buildFootballMarkets(rand, homeWinProb, drawProb!, awayWinProb, homeGoals, awayGoals);
-  } else if (sport === "basketball") {
-    const homeScore = Math.round(clamp(98 + homeStrength * 22 - awayStrength * 8, 82, 140));
-    const awayScore = Math.round(clamp(98 + awayStrength * 22 - homeStrength * 8, 82, 140));
-    predictedHomeScore = homeScore;
-    predictedAwayScore = awayScore;
-    scoreSimulations = basketballScoreSimulations(rand, homeStrength, awayStrength);
-    marketPredictions = buildBasketballMarkets(rand, homeWinProb, awayWinProb, homeScore, awayScore);
-  } else {
-    scoreSimulations = tennisScoreSimulations(rand, homeWinProb);
-    marketPredictions = buildTennisMarkets(rand, homeWinProb, awayWinProb);
+    marketPredictions = buildTennisMarkets(homeWinProb, awayWinProb);
   }
 
   const bestMarket = [...marketPredictions].sort((a, b) => b.ev - a.ev)[0];
   const bestBet = bestMarket.prediction;
-  const bestBetEv = round2(bestMarket.ev);
-  const bestBetConfidence = round2(bestMarket.confidence);
+  const bestBetEv = round4(bestMarket.ev);
+  const bestBetConfidence = round4(bestMarket.confidence);
   const valueRating = getValueRating(bestBetEv);
 
-  const aiConsensus = generateConsensus(sport, homeTeam, awayTeam, homeWinProb, awayWinProb, bestBet, bestBetEv, valueRating);
+  const aiConsensus = generateConsensus(
+    sport, homeTeam, awayTeam,
+    homeWinProb, awayWinProb, drawProb,
+    bestBet, bestBetEv, valueRating,
+    python.model_meta,
+  );
 
   return {
     homeWinProb,
