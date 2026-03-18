@@ -30,13 +30,13 @@ args = "python-service: Model Server"
 name = "python-service: Model Server"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd python-service && python main.py"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd python-service && uvicorn main:app --host 0.0.0.0 --port 5000"
+waitForPort = 5000
 
 [agent]
 stack = "PNPM_WORKSPACE"
