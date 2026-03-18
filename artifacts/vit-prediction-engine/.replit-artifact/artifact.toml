@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "VIT Prediction Engine"
+version = "1.0.0"
+id = "artifacts/vit-prediction-engine"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+localPort = 23499
+name = "web"
+paths = ["/"]
+
+[services.development]
+run = "pnpm --filter @workspace/vit-prediction-engine run dev"
+
+[services.env]
+PORT = "23499"
+BASE_PATH = "/"
+
+[services.production]
+build = ["pnpm", "--filter", "@workspace/vit-prediction-engine", "run", "build"]
+publicDir = "artifacts/vit-prediction-engine/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"

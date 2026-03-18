@@ -1,0 +1,15 @@
+packages:
+  "framer-motion": "For smooth layout animations and entry transitions"
+  "clsx": "Utility for constructing className strings conditionally"
+  "tailwind-merge": "Utility function to efficiently merge Tailwind CSS classes"
+  "lucide-react": "For crisp, beautiful technical icons"
+  "date-fns": "For formatting processing times and timestamps"
+
+images:
+  - path: "artifacts/vit-prediction-engine/public/images/tech-bg.png"
+    description: "Abstract dark technical background with subtle glowing cyan and purple grid lines, out of focus, very dark slate background, professional futuristic AI aesthetic"
+    aspect_ratio: "16:9"
+
+notes:
+  - "The app runs primarily in dark mode for a technical/professional feel."
+  - "React Query hooks are imported directly from @workspace/api-client-react as specified in the instructions."

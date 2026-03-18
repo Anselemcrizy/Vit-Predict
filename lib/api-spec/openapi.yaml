@@ -1,15 +1,16 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: VIT Prediction Engine API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: predictions
+    description: Image prediction operations
 paths:
   /healthz:
     get:
@@ -24,6 +25,88 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /predictions:
+    get:
+      operationId: listPredictions
+      tags: [predictions]
+      summary: List all predictions
+      description: Returns all past image predictions
+      responses:
+        "200":
+          description: List of predictions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Prediction"
+    post:
+      operationId: createPrediction
+      tags: [predictions]
+      summary: Create a new prediction
+      description: Submit an image for VIT-based classification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePredictionBody"
+      responses:
+        "201":
+          description: Prediction created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prediction"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /predictions/{id}:
+    get:
+      operationId: getPrediction
+      tags: [predictions]
+      summary: Get a prediction by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Prediction found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prediction"
+        "404":
+          description: Prediction not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deletePrediction
+      tags: [predictions]
+      summary: Delete a prediction
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Prediction deleted
+        "404":
+          description: Prediction not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +116,63 @@ components:
           type: string
       required:
         - status
-
+    PredictionResult:
+      type: object
+      properties:
+        label:
+          type: string
+        confidence:
+          type: number
+      required:
+        - label
+        - confidence
+    Prediction:
+      type: object
+      properties:
+        id:
+          type: integer
+        imageUrl:
+          type: string
+        imageData:
+          type: ["string", "null"]
+        topLabel:
+          type: string
+        topConfidence:
+          type: number
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/PredictionResult"
+        modelName:
+          type: string
+        processingTimeMs:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - imageUrl
+        - imageData
+        - topLabel
+        - topConfidence
+        - results
+        - modelName
+        - processingTimeMs
+        - createdAt
+    CreatePredictionBody:
+      type: object
+      properties:
+        imageUrl:
+          type: string
+        imageData:
+          type: ["string", "null"]
+      required:
+        - imageUrl
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error

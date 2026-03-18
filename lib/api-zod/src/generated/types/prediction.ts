@@ -5,14 +5,7 @@
  * VIT Prediction Engine API
  * OpenAPI spec version: 0.1.0
  */
-export interface HealthStatus {
-  status: string;
-}
-
-export interface PredictionResult {
-  label: string;
-  confidence: number;
-}
+import type { PredictionResult } from "./predictionResult";
 
 export interface Prediction {
   id: number;
@@ -25,15 +18,5 @@ export interface Prediction {
   modelName: string;
   /** @nullable */
   processingTimeMs: number | null;
-  createdAt: string;
-}
-
-export interface CreatePredictionBody {
-  imageUrl: string;
-  /** @nullable */
-  imageData?: string | null;
-}
-
-export interface ErrorResponse {
-  error: string;
+  createdAt: Date;
 }
