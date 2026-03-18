@@ -8,7 +8,7 @@ import {
   DeletePredictionParams,
   CreatePredictionBody,
 } from "@workspace/api-zod";
-import { runVitPrediction } from "../lib/vit-inference.js";
+import { runVitAnalysis, type Sport } from "../lib/vit-engine.js";
 
 const router: IRouter = Router();
 
@@ -27,20 +27,31 @@ router.post("/predictions", async (req, res): Promise<void> => {
     return;
   }
 
-  const { imageUrl, imageData } = parsed.data;
+  const { sport, homeTeam, awayTeam, league, matchDate } = parsed.data;
 
-  const inference = await runVitPrediction(imageUrl, imageData ?? null);
+  const result = await runVitAnalysis(sport as Sport, homeTeam, awayTeam);
 
   const [prediction] = await db
     .insert(predictionsTable)
     .values({
-      imageUrl,
-      imageData: imageData ?? null,
-      topLabel: inference.topLabel,
-      topConfidence: inference.topConfidence,
-      results: inference.results,
-      modelName: inference.modelName,
-      processingTimeMs: inference.processingTimeMs,
+      sport,
+      homeTeam,
+      awayTeam,
+      league: league ?? null,
+      matchDate: matchDate ?? null,
+      homeWinProb: result.homeWinProb,
+      drawProb: result.drawProb,
+      awayWinProb: result.awayWinProb,
+      predictedHomeScore: result.predictedHomeScore,
+      predictedAwayScore: result.predictedAwayScore,
+      bestBet: result.bestBet,
+      bestBetEv: result.bestBetEv,
+      bestBetConfidence: result.bestBetConfidence,
+      valueRating: result.valueRating,
+      aiConsensus: result.aiConsensus,
+      marketPredictions: result.marketPredictions,
+      scoreSimulations: result.scoreSimulations,
+      processingTimeMs: result.processingTimeMs,
     })
     .returning();
 

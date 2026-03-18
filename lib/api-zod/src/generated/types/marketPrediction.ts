@@ -6,6 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
-  status: string;
+export interface MarketPrediction {
+  market: string;
+  prediction: string;
+  confidence: number;
+  ev: number;
+  recommendedOdds: number;
 }

@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Api
   version: 0.1.0
-  description: VIT Prediction Engine API
+  description: VIT - Value Intelligence Trust Prediction Engine API
 servers:
   - url: /api
     description: Base API path
@@ -10,7 +10,7 @@ tags:
   - name: health
     description: Health operations
   - name: predictions
-    description: Image prediction operations
+    description: Match prediction operations
 paths:
   /healthz:
     get:
@@ -30,7 +30,7 @@ paths:
       operationId: listPredictions
       tags: [predictions]
       summary: List all predictions
-      description: Returns all past image predictions
+      description: Returns all past match predictions ordered by recency
       responses:
         "200":
           description: List of predictions
@@ -44,7 +44,7 @@ paths:
       operationId: createPrediction
       tags: [predictions]
       summary: Create a new prediction
-      description: Submit an image for VIT-based classification
+      description: Submit a match for VIT analysis
       requestBody:
         required: true
         content:
@@ -116,59 +116,6 @@ components:
           type: string
       required:
         - status
-    PredictionResult:
-      type: object
-      properties:
-        label:
-          type: string
-        confidence:
-          type: number
-      required:
-        - label
-        - confidence
-    Prediction:
-      type: object
-      properties:
-        id:
-          type: integer
-        imageUrl:
-          type: string
-        imageData:
-          type: ["string", "null"]
-        topLabel:
-          type: string
-        topConfidence:
-          type: number
-        results:
-          type: array
-          items:
-            $ref: "#/components/schemas/PredictionResult"
-        modelName:
-          type: string
-        processingTimeMs:
-          type: ["integer", "null"]
-        createdAt:
-          type: string
-          format: date-time
-      required:
-        - id
-        - imageUrl
-        - imageData
-        - topLabel
-        - topConfidence
-        - results
-        - modelName
-        - processingTimeMs
-        - createdAt
-    CreatePredictionBody:
-      type: object
-      properties:
-        imageUrl:
-          type: string
-        imageData:
-          type: ["string", "null"]
-      required:
-        - imageUrl
     ErrorResponse:
       type: object
       properties:
@@ -176,3 +123,122 @@ components:
           type: string
       required:
         - error
+    CreatePredictionBody:
+      type: object
+      properties:
+        sport:
+          type: string
+          enum: [football, basketball, tennis]
+        homeTeam:
+          type: string
+        awayTeam:
+          type: string
+        league:
+          type: ["string", "null"]
+        matchDate:
+          type: ["string", "null"]
+      required:
+        - sport
+        - homeTeam
+        - awayTeam
+    ScoreSimulation:
+      type: object
+      properties:
+        home:
+          type: integer
+        away:
+          type: integer
+        probability:
+          type: number
+      required:
+        - home
+        - away
+        - probability
+    MarketPrediction:
+      type: object
+      properties:
+        market:
+          type: string
+        prediction:
+          type: string
+        confidence:
+          type: number
+        ev:
+          type: number
+        recommendedOdds:
+          type: number
+      required:
+        - market
+        - prediction
+        - confidence
+        - ev
+        - recommendedOdds
+    Prediction:
+      type: object
+      properties:
+        id:
+          type: integer
+        sport:
+          type: string
+        homeTeam:
+          type: string
+        awayTeam:
+          type: string
+        league:
+          type: ["string", "null"]
+        matchDate:
+          type: ["string", "null"]
+        homeWinProb:
+          type: number
+        drawProb:
+          type: ["number", "null"]
+        awayWinProb:
+          type: number
+        predictedHomeScore:
+          type: ["number", "null"]
+        predictedAwayScore:
+          type: ["number", "null"]
+        bestBet:
+          type: string
+        bestBetEv:
+          type: number
+        bestBetConfidence:
+          type: number
+        valueRating:
+          type: string
+        aiConsensus:
+          type: string
+        marketPredictions:
+          type: array
+          items:
+            $ref: "#/components/schemas/MarketPrediction"
+        scoreSimulations:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScoreSimulation"
+        processingTimeMs:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - sport
+        - homeTeam
+        - awayTeam
+        - league
+        - matchDate
+        - homeWinProb
+        - drawProb
+        - awayWinProb
+        - predictedHomeScore
+        - predictedAwayScore
+        - bestBet
+        - bestBetEv
+        - bestBetConfidence
+        - valueRating
+        - aiConsensus
+        - marketPredictions
+        - scoreSimulations
+        - processingTimeMs
+        - createdAt
