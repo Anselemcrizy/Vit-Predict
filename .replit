@@ -35,8 +35,8 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd python-service && uvicorn main:app --host 0.0.0.0 --port 5000"
-waitForPort = 5000
+args = "cd python-service && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+waitForPort = 8000
 
 [agent]
 stack = "PNPM_WORKSPACE"
@@ -48,3 +48,4 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
+packages = ["glibcLocales", "libxcrypt", "pkg-config", "xsimd"]
