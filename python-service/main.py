@@ -32,9 +32,9 @@ def run_prediction_get():
 @app.post("/predict")
 def run_prediction(body: PredictRequest):
     start = time.time()
-    data = get_data()
 
     if body.sport == "football":
+        data = get_data(body.home_team, body.away_team)
         result = football_model.simulate_match(data["home_xg"], data["away_xg"])
         home_score = result["expected_goals"]["home"]
         away_score = result["expected_goals"]["away"]
@@ -48,7 +48,6 @@ def run_prediction(body: PredictRequest):
         }
 
     elif body.sport == "basketball":
-        # Stub: pace-adjusted normal model placeholder until real data arrives
         home_win = 0.58
         draw = None
         away_win = 0.42
@@ -59,7 +58,6 @@ def run_prediction(body: PredictRequest):
         meta = {"model": "Pace-Adjusted Normal", "note": "stub data"}
 
     elif body.sport == "tennis":
-        # Stub: Markov set model placeholder until real data arrives
         home_win = 0.61
         draw = None
         away_win = 0.39

@@ -3,6 +3,8 @@
  * Orchestrates the Python model service and builds full betting market analysis.
  */
 
+import { fetchLiveOdds, type LiveOdds } from "./odds-fetcher.js";
+
 export type Sport = "football" | "basketball" | "tennis";
 
 export interface MarketPrediction {
@@ -88,30 +90,55 @@ function computeEv(trueProb: number, marketProb: number): number {
   return round4(trueProb / marketProb - 1);
 }
 
+/** EV using real decimal odds: trueProb * decimalOdds - 1 */
+function evFromOdds(trueProb: number, decimalOdds: number): number {
+  return round4(trueProb * decimalOdds - 1);
+}
+
 function buildFootballMarkets(
   homeWin: number, draw: number, awayWin: number,
   homeScore: number, awayScore: number,
+  liveOdds: LiveOdds | null = null,
 ): MarketPrediction[] {
   const total = homeScore + awayScore;
   const over25 = total > 2.45 ? Math.min(0.82, 0.48 + (total - 2.45) * 0.18) : Math.max(0.22, 0.48 - (2.45 - total) * 0.18);
   const btts = Math.min(homeScore, awayScore) > 0.75 ? Math.min(0.78, 0.45 + Math.min(homeScore, awayScore) * 0.2) : Math.max(0.22, 0.42 - (0.75 - Math.min(homeScore, awayScore)) * 0.3);
-
   const marketOddsVigor = 1.06;
+
+  const isHomeWin = homeWin >= awayWin && homeWin >= draw;
+  const isAwayWin = !isHomeWin && awayWin >= draw;
+  const resultProb = Math.max(homeWin, awayWin, draw);
+  const resultPrediction = isHomeWin ? "Home Win" : isAwayWin ? "Away Win" : "Draw";
+  const resultRealOdds = liveOdds
+    ? (isHomeWin ? liveOdds.homeOdds : isAwayWin ? liveOdds.awayOdds : (liveOdds.drawOdds ?? impliedOdds(draw)))
+    : null;
+
+  const ouLine = liveOdds?.overLine ?? 2.5;
+  const ouLabel = `Over/Under ${ouLine}`;
+  const ouProb = over25;
+  const ouIsOver = ouProb > 0.5;
+  const ouBestOdds = liveOdds
+    ? (ouIsOver ? liveOdds.overOdds : liveOdds.underOdds)
+    : null;
 
   const markets: MarketPrediction[] = [
     {
       market: "Match Result",
-      prediction: homeWin >= awayWin && homeWin >= draw ? "Home Win" : awayWin >= draw ? "Away Win" : "Draw",
-      confidence: round4(Math.max(homeWin, awayWin, draw)),
-      ev: computeEv(Math.max(homeWin, awayWin, draw), Math.max(homeWin, awayWin, draw) * marketOddsVigor),
-      recommendedOdds: round2(impliedOdds(Math.max(homeWin, awayWin, draw)) * 0.97),
+      prediction: resultPrediction,
+      confidence: round4(resultProb),
+      ev: resultRealOdds
+        ? evFromOdds(resultProb, resultRealOdds)
+        : computeEv(resultProb, resultProb * marketOddsVigor),
+      recommendedOdds: resultRealOdds ?? round2(impliedOdds(resultProb) * 0.97),
     },
     {
-      market: "Over/Under 2.5",
-      prediction: over25 > 0.5 ? "Over 2.5 Goals" : "Under 2.5 Goals",
-      confidence: round4(Math.max(over25, 1 - over25)),
-      ev: computeEv(Math.max(over25, 1 - over25), Math.max(over25, 1 - over25) * marketOddsVigor),
-      recommendedOdds: round2(impliedOdds(Math.max(over25, 1 - over25)) * 0.97),
+      market: ouLabel,
+      prediction: ouIsOver ? `Over ${ouLine} Goals` : `Under ${ouLine} Goals`,
+      confidence: round4(Math.max(ouProb, 1 - ouProb)),
+      ev: ouBestOdds
+        ? evFromOdds(Math.max(ouProb, 1 - ouProb), ouBestOdds)
+        : computeEv(Math.max(ouProb, 1 - ouProb), Math.max(ouProb, 1 - ouProb) * marketOddsVigor),
+      recommendedOdds: ouBestOdds ?? round2(impliedOdds(Math.max(ouProb, 1 - ouProb)) * 0.97),
     },
     {
       market: "BTTS",
@@ -142,27 +169,36 @@ function buildFootballMarkets(
 function buildBasketballMarkets(
   homeWin: number, awayWin: number,
   homeScore: number, awayScore: number,
+  liveOdds: LiveOdds | null = null,
 ): MarketPrediction[] {
   const total = homeScore + awayScore;
-  const overUnderLine = Math.round(total / 5) * 5;
+  const overUnderLine = liveOdds?.overLine ?? Math.round(total / 5) * 5;
   const spread = Math.abs(homeScore - awayScore);
   const favoredHome = homeScore > awayScore;
   const marketOddsVigor = 1.05;
+
+  const mlProb = Math.max(homeWin, awayWin);
+  const mlOdds = liveOdds ? (homeWin > 0.5 ? liveOdds.homeOdds : liveOdds.awayOdds) : null;
+  const ouBestOdds = liveOdds ? liveOdds.overOdds : null;
 
   return [
     {
       market: "Moneyline",
       prediction: homeWin > 0.5 ? "Home Win" : "Away Win",
-      confidence: round4(Math.max(homeWin, awayWin)),
-      ev: computeEv(Math.max(homeWin, awayWin), Math.max(homeWin, awayWin) * marketOddsVigor),
-      recommendedOdds: round2(impliedOdds(Math.max(homeWin, awayWin)) * 0.97),
+      confidence: round4(mlProb),
+      ev: mlOdds
+        ? evFromOdds(mlProb, mlOdds)
+        : computeEv(mlProb, mlProb * marketOddsVigor),
+      recommendedOdds: mlOdds ?? round2(impliedOdds(mlProb) * 0.97),
     },
     {
       market: `Total Points O/U ${overUnderLine}`,
       prediction: total > overUnderLine ? `Over ${overUnderLine}` : `Under ${overUnderLine}`,
       confidence: round4(0.52),
-      ev: computeEv(0.52, 0.52 * marketOddsVigor),
-      recommendedOdds: round2(1.91),
+      ev: ouBestOdds
+        ? evFromOdds(0.52, ouBestOdds)
+        : computeEv(0.52, 0.52 * marketOddsVigor),
+      recommendedOdds: ouBestOdds ?? round2(1.91),
     },
     {
       market: "Point Spread",
@@ -183,17 +219,22 @@ function buildBasketballMarkets(
 
 function buildTennisMarkets(
   homeWin: number, awayWin: number,
+  liveOdds: LiveOdds | null = null,
 ): MarketPrediction[] {
   const marketOddsVigor = 1.05;
   const topSets = homeWin > 0.55 ? "2-0" : homeWin > 0.45 ? "2-1" : awayWin > 0.55 ? "0-2" : "1-2";
+  const winnerProb = Math.max(homeWin, awayWin);
+  const winnerOdds = liveOdds ? (homeWin > 0.5 ? liveOdds.homeOdds : liveOdds.awayOdds) : null;
 
   return [
     {
       market: "Match Winner",
       prediction: homeWin > 0.5 ? "Player 1 Win" : "Player 2 Win",
-      confidence: round4(Math.max(homeWin, awayWin)),
-      ev: computeEv(Math.max(homeWin, awayWin), Math.max(homeWin, awayWin) * marketOddsVigor),
-      recommendedOdds: round2(impliedOdds(Math.max(homeWin, awayWin)) * 0.97),
+      confidence: round4(winnerProb),
+      ev: winnerOdds
+        ? evFromOdds(winnerProb, winnerOdds)
+        : computeEv(winnerProb, winnerProb * marketOddsVigor),
+      recommendedOdds: winnerOdds ?? round2(impliedOdds(winnerProb) * 0.97),
     },
     {
       market: "Total Sets",
@@ -253,7 +294,11 @@ export async function runVitAnalysis(
 ): Promise<VitResult> {
   const startTime = Date.now();
 
-  const python = await callPythonModel(sport, homeTeam, awayTeam);
+  // Run Python model and odds fetch in parallel
+  const [python, liveOdds] = await Promise.all([
+    callPythonModel(sport, homeTeam, awayTeam),
+    fetchLiveOdds(sport, homeTeam, awayTeam).catch(() => null),
+  ]);
 
   const homeWinProb = round4(python.home_win);
   const awayWinProb = round4(python.away_win);
@@ -271,14 +316,16 @@ export async function runVitAnalysis(
     marketPredictions = buildFootballMarkets(
       homeWinProb, drawProb ?? 0, awayWinProb,
       predictedHomeScore ?? 1.2, predictedAwayScore ?? 1.0,
+      liveOdds,
     );
   } else if (sport === "basketball") {
     marketPredictions = buildBasketballMarkets(
       homeWinProb, awayWinProb,
       predictedHomeScore ?? 110, predictedAwayScore ?? 107,
+      liveOdds,
     );
   } else {
-    marketPredictions = buildTennisMarkets(homeWinProb, awayWinProb);
+    marketPredictions = buildTennisMarkets(homeWinProb, awayWinProb, liveOdds);
   }
 
   const bestMarket = [...marketPredictions].sort((a, b) => b.ev - a.ev)[0];
