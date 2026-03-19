@@ -35,7 +35,7 @@ export interface VitResult {
   processingTimeMs: number;
 }
 
-const PYTHON_SERVICE_URL = "http://localhost:5000";
+const PYTHON_SERVICE_URL = "http://localhost:8000";
 
 interface PythonPredictResponse {
   home_win: number;
