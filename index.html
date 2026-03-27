@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIT Prediction Engine</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+        
+        .input-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            width: 100%;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+        }
+        
+        .result-card {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .value-status {
+            font-size: 2rem;
+            font-weight: bold;
+            text-align: center;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .value-high {
+            background: #d4edda;
+            color: #155724;
+            border: 2px solid #28a745;
+        }
+        
+        .value-value {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .value-low {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .value-no {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .stat {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 18px;
+            color: #666;
+        }
+        
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+        
+        .recent-list {
+            margin-top: 20px;
+        }
+        
+        .recent-item {
+            background: white;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .recent-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .badge {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .badge-value { background: #28a745; color: white; }
+        .badge-low { background: #ffc107; color: #333; }
+        .badge-no { background: #dc3545; color: white; }
+        
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+        
+        .pulse {
+            animation: pulse 1s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏆 VIT Prediction Engine</h1>
+            <p>Value Intelligence Trust - Identify True Expected Value</p>
+        </div>
+        
+        <div class="card">
+            <h2>📊 New Analysis</h2>
+            
+            <div class="input-group">
+                <label>Sport</label>
+                <select id="sport">
+                    <option value="football">Football</option>
+                    <option value="basketball">Basketball</option>
+                    <option value="tennis">Tennis</option>
+                </select>
+            </div>
+            
+            <div class="input-group">
+                <label>Home Team / Player 1</label>
+                <input type="text" id="homeTeam" placeholder="e.g., Bournemouth U21" value="Bournemouth U21">
+            </div>
+            
+            <div class="input-group">
+                <label>Away Team / Player 2</label>
+                <input type="text" id="awayTeam" placeholder="e.g., West Bromwich Albion U21" value="West Bromwich Albion U21">
+            </div>
+            
+            <div class="input-group">
+                <label>League / Tournament (Optional)</label>
+                <input type="text" id="league" placeholder="e.g., England_U21" value="England_U21">
+            </div>
+            
+            <button onclick="runPrediction()">🚀 RUN PREDICTION ENGINE</button>
+            
+            <div id="result"></div>
+        </div>
+        
+        <div class="card">
+            <h2>📋 Recent Predictions</h2>
+            <div id="recent" class="recent-list">
+                <div class="loading">Loading recent predictions...</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const API_URL = 'http://localhost:8000';
+        
+        async function runPrediction() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="loading pulse">🔄 Analyzing match data...</div>';
+            
+            const sport = document.getElementById('sport').value;
+            const homeTeam = document.getElementById('homeTeam').value;
+            const awayTeam = document.getElementById('awayTeam').value;
+            const league = document.getElementById('league').value;
+            
+            try {
+                const response = await fetch(`${API_URL}/analyze`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        sport: sport,
+                        home_team: homeTeam,
+                        away_team: awayTeam,
+                        league: league || null
+                    })
+                });
+                
+                const data = await response.json();
+                displayResult(data);
+                saveToRecent(data, homeTeam, awayTeam);
+                
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        ❌ Error: ${error.message}<br>
+                        Make sure the API server is running on ${API_URL}
+                    </div>
+                `;
+            }
+        }
+        
+        function displayResult(data) {
+            const resultDiv = document.getElementById('result');
+            
+            if (data.error) {
+                resultDiv.innerHTML = `<div class="error">❌ ${data.error}</div>`;
+                return;
+            }
+            
+            const valueStatus = data.value_status || data.value || 'NO VALUE';
+            const ev = (data.expected_value || data.ev || 0) * 100;
+            const overProb = (data.over_2_5 || data.over_2_5_probability || 0) * 100;
+            
+            let statusClass = 'value-no';
+            let statusIcon = '❌';
+            
+            if (valueStatus === 'HIGH VALUE' || ev > 10) {
+                statusClass = 'value-high';
+                statusIcon = '🔥🔥';
+            } else if (valueStatus === 'VALUE' || ev > 5) {
+                statusClass = 'value-value';
+                statusIcon = '✅';
+            } else if (valueStatus === 'LOW VALUE' || ev > 0) {
+                statusClass = 'value-low';
+                statusIcon = '⚠️';
+            } else {
+                statusClass = 'value-no';
+                statusIcon = '❌';
+            }
+            
+            resultDiv.innerHTML = `
+                <div class="result-card">
+                    <div class="value-status ${statusClass}">
+                        ${statusIcon} ${valueStatus} ${statusIcon}
+                    </div>
+                    
+                    <div class="stats-grid">
+                        <div class="stat">
+                            <div class="stat-label">Expected Value</div>
+                            <div class="stat-value">${ev.toFixed(1)}%</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">Over 2.5 Probability</div>
+                            <div class="stat-value">${overProb.toFixed(1)}%</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">Home Win</div>
+                            <div class="stat-value">${((data.home_win || 0.5) * 100).toFixed(1)}%</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">Away Win</div>
+                            <div class="stat-value">${((data.away_win || 0.5) * 100).toFixed(1)}%</div>
+                        </div>
+                    </div>
+                    
+                    ${data.predicted_home_score ? `
+                    <div class="stats-grid">
+                        <div class="stat">
+                            <div class="stat-label">Predicted Score</div>
+                            <div class="stat-value">${data.predicted_home_score} - ${data.predicted_away_score}</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">Processing Time</div>
+                            <div class="stat-value">${data.processing_time_ms || 0} ms</div>
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+        
+        async function loadRecent() {
+            try {
+                const response = await fetch(`${API_URL}/recent`);
+                const data = await response.json();
+                
+                const recentDiv = document.getElementById('recent');
+                if (data.predictions && data.predictions.length > 0) {
+                    recentDiv.innerHTML = data.predictions.map(p => `
+                        <div class="recent-item" onclick="quickAnalyze('${p.match}')">
+                            <span>${p.match}</span>
+                            <span class="badge badge-${p.value_status === 'VALUE' ? 'value' : (p.value_status === 'LOW VALUE' ? 'low' : 'no')}">
+                                ${p.value_status}
+                            </span>
+                        </div>
+                    `).join('');
+                } else {
+                    recentDiv.innerHTML = '<div class="loading">No recent predictions yet. Run your first analysis!</div>';
+                }
+            } catch (error) {
+                console.error('Error loading recent:', error);
+            }
+        }
+        
+        function saveToRecent(data, homeTeam, awayTeam) {
+            const recent = JSON.parse(localStorage.getItem('vit_recent') || '[]');
+            recent.unshift({
+                match: `${homeTeam} vs ${awayTeam}`,
+                value_status: data.value_status || 'NO VALUE',
+                ev: data.expected_value || 0,
+                timestamp: new Date().toISOString()
+            });
+            
+            // Keep only last 10
+            const trimmed = recent.slice(0, 10);
+            localStorage.setItem('vit_recent', JSON.stringify(trimmed));
+            
+            // Update display
+            displayRecent(trimmed);
+        }
+        
+        function displayRecent(recent) {
+            const recentDiv = document.getElementById('recent');
+            if (recent.length > 0) {
+                recentDiv.innerHTML = recent.map(p => `
+                    <div class="recent-item" onclick="quickAnalyzeFromCache('${p.match}')">
+                        <span>${p.match}</span>
+                        <span class="badge badge-${p.value_status === 'VALUE' ? 'value' : (p.value_status === 'LOW VALUE' ? 'low' : 'no')}">
+                            ${p.value_status}
+                        </span>
+                    </div>
+                `).join('');
+            }
+        }
+        
+        function quickAnalyze(match) {
+            const [home, away] = match.split(' vs ');
+            document.getElementById('homeTeam').value = home;
+            document.getElementById('awayTeam').value = away;
+            runPrediction();
+        }
+        
+        function quickAnalyzeFromCache(match) {
+            quickAnalyze(match);
+        }
+        
+        // Load recent on page load
+        const stored = JSON.parse(localStorage.getItem('vit_recent') || '[]');
+        if (stored.length > 0) {
+            displayRecent(stored);
+        } else {
+            loadRecent();
+        }
+        
+        // Auto-run on page load with default values
+        setTimeout(() => {
+            runPrediction();
+        }, 500);
+    </script>
+</body>
+</html>
